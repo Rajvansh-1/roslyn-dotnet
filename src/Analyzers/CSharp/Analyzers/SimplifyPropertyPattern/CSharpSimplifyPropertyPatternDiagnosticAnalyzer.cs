@@ -11,23 +11,28 @@ using Microsoft.CodeAnalysis.Diagnostics;
 namespace Microsoft.CodeAnalysis.CSharp.SimplifyPropertyPattern;
 
 /// <summary>
-/// Looks for code of the form:
+/// Analyzer for simplifying nested property patterns in C# 10.0+.
 /// 
-///     <c>x is { a: { b: ... } }</c>
-///     
-/// and converts it to:
+/// Converts code of the form:
+/// <code>x is { a: { b: ... } }</code>
 /// 
-///     <c>x is { a.b: ... }</c>
+/// Into a simpler form:
+/// <code>x is { a.b: ... }</code>
 /// </summary>
+/// <remarks>
+/// Only works for projects targeting C# 10 or higher. Disabled otherwise.
+/// Improves readability and reduces unnecessary nesting in property patterns.
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 internal sealed class CSharpSimplifyPropertyPatternDiagnosticAnalyzer : AbstractBuiltInCodeStyleDiagnosticAnalyzer
 {
     public CSharpSimplifyPropertyPatternDiagnosticAnalyzer()
-        : base(IDEDiagnosticIds.SimplifyPropertyPatternDiagnosticId,
-               EnforceOnBuildValues.SimplifyPropertyPattern,
-               CSharpCodeStyleOptions.PreferExtendedPropertyPattern,
-               new LocalizableResourceString(nameof(CSharpAnalyzersResources.Property_pattern_can_be_simplified), CSharpAnalyzersResources.ResourceManager, typeof(CSharpAnalyzersResources)),
-               new LocalizableResourceString(nameof(CSharpAnalyzersResources.Simplify_property_pattern), CSharpAnalyzersResources.ResourceManager, typeof(CSharpAnalyzersResources)))
+        : base(
+            IDEDiagnosticIds.SimplifyPropertyPatternDiagnosticId,
+            EnforceOnBuildValues.SimplifyPropertyPattern,
+            CSharpCodeStyleOptions.PreferExtendedPropertyPattern,
+            new LocalizableResourceString(nameof(CSharpAnalyzersResources.Property_pattern_can_be_simplified), CSharpAnalyzersResources.ResourceManager, typeof(CSharpAnalyzersResources)),
+            new LocalizableResourceString(nameof(CSharpAnalyzersResources.Simplify_property_pattern), CSharpAnalyzersResources.ResourceManager, typeof(CSharpAnalyzersResources)))
     {
     }
 
@@ -38,13 +43,12 @@ internal sealed class CSharpSimplifyPropertyPatternDiagnosticAnalyzer : Abstract
     {
         context.RegisterCompilationStartAction(compilationContext =>
         {
-            // Dotted property patterns are only available in C# 10.0 and above.  Don't offer this refactoring
-            // in projects targeting a lesser version.
-
+            // Dotted property patterns are only available in C# 10.0 and above.
+            // Do not offer this refactoring for lower versions.
             if (compilationContext.Compilation.LanguageVersion() < LanguageVersion.CSharp10)
                 return;
 
-            context.RegisterSyntaxNodeAction(AnalyzeSubpattern, SyntaxKind.Subpattern);
+            compilationContext.RegisterSyntaxNodeAction(AnalyzeSubpattern, SyntaxKind.Subpattern);
         });
     }
 
@@ -59,14 +63,13 @@ internal sealed class CSharpSimplifyPropertyPatternDiagnosticAnalyzer : Abstract
         if (!SimplifyPropertyPatternHelpers.IsSimplifiable(subpattern, out _, out var expressionColon))
             return;
 
-        // If the diagnostic is not hidden, then just place the user visible part
-        // on the local being initialized with the lambda.
+        // Report diagnostic at the location of the colon expression for better clarity.
         syntaxContext.ReportDiagnostic(DiagnosticHelper.Create(
             Descriptor,
             expressionColon.GetLocation(),
             styleOption.Notification,
             syntaxContext.Options,
-            [subpattern.GetLocation()],
+            additionalLocations: new[] { subpattern.GetLocation() },
             properties: null));
     }
 }
